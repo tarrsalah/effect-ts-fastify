@@ -4,7 +4,14 @@ import * as L from "@effect-ts/core/Effect/Layer"
 import { tag } from "@effect-ts/core/Has"
 import type { FastifyReply, FastifyRequest } from "fastify"
 
-import { get, inject, LiveFastifyApp } from "../src"
+import {
+  EffectPlugin,
+  FastifyApp,
+  get,
+  inject,
+  LiveFastifyApp,
+  register
+} from "../src"
 
 describe("fastify", () => {
   test("Should handle GET request", async () => {
@@ -41,4 +48,30 @@ describe("fastify", () => {
     expect(response.statusCode).toEqual(200)
     expect(response.body).toEqual("OK")
   })
+})
+
+test("should throw exceptions", async () => {
+  const plugin: EffectPlugin<unknown> = (_instance, _opts) => {
+    return T.unit
+  }
+
+  const program = T.gen(function* (_) {
+    const { app } = yield* _(FastifyApp)
+
+    yield* _(register(plugin))
+
+    // ready!
+    yield* _(
+      T.effectAsync((resume) => {
+        app.ready((err) => {
+          if (err) {
+            return resume(T.fail(err))
+          } else {
+            return resume(T.unit)
+          }
+        })
+      })
+    )
+  })
+  await pipe(program, T.provideSomeLayer(LiveFastifyApp), T.runPromise)
 })

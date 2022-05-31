@@ -4,10 +4,14 @@ import * as L from "@effect-ts/core/Effect/Layer"
 import type { Has } from "@effect-ts/core/Has"
 import { tag } from "@effect-ts/core/Has"
 import type { _A, _R } from "@effect-ts/core/Utils"
+import { Tagged } from "@effect-ts/system/Case"
+
 import type {
   ContextConfigDefault,
   FastifyInstance,
   FastifyLoggerInstance,
+  FastifyPluginCallback,
+  FastifyPluginOptions,
   FastifyReply,
   FastifyRequest,
   HTTPMethods,
@@ -88,6 +92,50 @@ function withFastifyRuntime<
 }
 
 const withFastifyInstance = T.accessService(FastifyApp)((_) => _.app)
+
+export class FastifyPluginError extends Tagged("FastifyPluginError")<{
+  readonly message: string
+}> {}
+
+export type EffectPlugin<
+  R,
+  Options extends FastifyPluginOptions = Record<never, never>
+> = (instance: FastifyInstance, opts: Options) => T.Effect<R, FastifyPluginError, void>
+
+export type EffectPluginOptions<Plugin> = Plugin extends EffectPlugin<
+  any,
+  infer Options
+>
+  ? Options
+  : never
+
+function runPlugin<
+  Plugin extends EffectPlugin<any, Options>,
+  Options extends FastifyPluginOptions = EffectPluginOptions<Plugin>
+>(plugin: Plugin) {
+  return T.map_(
+    T.runtime<_R<Plugin extends EffectPlugin<infer R> ? T.RIO<R, void> : never>>(),
+    (r): FastifyPluginCallback<Options> => {
+      return (instance, opts, done) => {
+        r.runFiber(plugin(instance, opts)).runAsync((exit) => {
+          if (exit._tag === "Failure") {
+            console.log(exit.cause)
+            done(new Error(">>> TODO"))
+          } else {
+            done()
+          }
+        })
+      }
+    }
+  )
+}
+
+export function register<Plugin extends EffectPlugin<any, any>>(plugin: Plugin) {
+  return T.gen(function* (_) {
+    const { app } = yield* _(FastifyApp)
+    app.register(yield* _(runPlugin(plugin)));
+  })
+}
 
 export type EffectHandler<
   R,
