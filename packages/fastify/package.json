@@ -1,6 +1,6 @@
 {
-  "name": "@tcmlabs/effect-ts-fastify",
-  "version": "0.0.1",
+  "name": "@tarrsalah/effect-ts-fastify",
+  "version": "0.0.5",
   "license": "MIT",
   "repository": "https://github.com/@tcmlabs/effect-ts-fastify.git",
   "private": false,
