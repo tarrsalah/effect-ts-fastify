@@ -30,6 +30,37 @@ import type {
   ResolveFastifyRequestType
 } from "fastify/types/type-provider"
 
+export type Opts<
+  R,
+  RawServer extends RawServerBase = RawServerDefault,
+  RawRequest extends RawRequestDefaultExpression<RawServer> = RawRequestDefaultExpression<RawServer>,
+  RawReply extends RawReplyDefaultExpression<RawServer> = RawReplyDefaultExpression<RawServer>,
+  RouteGeneric extends RouteGenericInterface = RouteGenericInterface,
+  ContextConfig = ContextConfigDefault,
+  SchemaCompiler = FastifySchema,
+  TypeProvider extends FastifyTypeProvider = FastifyTypeProviderDefault,
+  RequestType extends FastifyRequestType = ResolveFastifyRequestType<
+    TypeProvider,
+    SchemaCompiler,
+    RouteGeneric
+  >,
+  Logger extends FastifyLoggerInstance = FastifyLoggerInstance
+> = T.Effect<
+  R,
+  never,
+  RouteShorthandOptions<
+    RawServer,
+    RawRequest,
+    RawReply,
+    RouteGeneric,
+    ContextConfig,
+    SchemaCompiler,
+    TypeProvider,
+    RequestType,
+    Logger
+  >
+>
+
 export type EffectHandler<
   R,
   RawServer extends RawServerBase = RawServerDefault,
@@ -70,6 +101,32 @@ export type EffectHandler<
   never,
   ResolveFastifyReplyReturnType<TypeProvider, SchemaCompiler, RouteGeneric>
 >
+
+export function runOpts<
+  O extends Opts<any, any, any, any, any, any, any, any, any, any>
+>(o: O) {
+  return T.map_(
+    T.gen(function* (_) {
+      const runtime = yield* _(
+        T.runtime<
+          _R<
+            [O] extends [Opts<infer R, any, any, any, any, any, any, any, any, any>]
+              ? T.RIO<R, void>
+              : never
+          >
+        >()
+      )
+
+      return yield* _(
+        T.tryCatchPromise(
+          () => runtime.runPromise(o),
+          () => {}
+        )
+      )
+    }),
+    (o) => o
+  )
+}
 
 function runHandler<Handler extends EffectHandler<any, any, any, any, any, any, any>>(
   handler: Handler
@@ -166,25 +223,31 @@ export const { after, close, inject, listen, server } = T.deriveLifted(Fastify)(
 
 const match =
   (method: HTTPMethods) =>
-  <Handler extends EffectHandler<any, any, any, any, any, any, any>>(
+  <
+    H extends EffectHandler<any, any, any, any, any, any, any>,
+    O extends Opts<any, any, any, any, any, any, any, any, any, any>
+  >(
     url: string,
-    opts: RouteShorthandOptions | Handler,
-    handler?: Handler
-  ): T.RIO<
+    opts: O | H,
+    handler?: H
+  ): T.Effect<
     Has<Fastify> &
       _R<
-        [Handler] extends [EffectHandler<infer R, any, any, any, any, any, any>]
+        [H] extends [EffectHandler<infer R, any, any, any, any, any, any>]
           ? T.RIO<R, void>
           : never
       >,
+    unknown,
     void
   > =>
     T.gen(function* (_) {
       const _server = yield* _(server)
       const _handler = (handler ? handler : opts) as any
-      const _opts = (handler ? opts : {}) as any
+      const _opts = (handler ? opts : T.succeed({})) as any
+
+      const rawOps = yield* _(runOpts(_opts))
       const rawHandler = yield* _(runHandler(_handler))
-      _server.route({ ..._opts, ...{ method, url, handler: rawHandler } })
+      _server.route({ ...rawOps, ...{ method, url, handler: rawHandler } })
     })
 
 export const get = match("GET")

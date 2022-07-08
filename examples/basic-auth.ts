@@ -23,17 +23,28 @@ async function validate(username: string, password: string) {
   }
 }
 
+const publicHandler = (_req: FastifyRequest, _reply: FastifyReply) => T.succeed("OK")
+
 pipe(
   T.gen(function* (_) {
     const fastify = yield* _(server)
 
     fastify.register(FastifyBasicAuth, { validate, authenticate: true })
 
+    const opts = T.gen(function* (_) {
+      const { basicAuth } = yield* _(server)
+      return {
+        onRequest: basicAuth
+      }
+    })
+
     yield* _(after())
-    yield* _(get("/", { onRequest: fastify.basicAuth }, handler))
+    yield* _(get("/admin", opts, handler))
+    yield* _(get("/", publicHandler))
 
     yield* _(listen(3000, "localhost"))
     console.log("listening to localhost:3000!")
+
     yield* _(T.never)
   }),
   T.provideSomeLayer(FastifyLive),
